@@ -64,7 +64,7 @@ def describeraster(raster):
   pixelSizeX, pixelSizeY = data.res
   print('RESOLUTION (x,y):', pixelSizeX, pixelSizeY)
 
-
+gdalwarp -dstnodata -cutline -co COMPRESS=LZW /projects/kwaechte/data/rev_qoz/soz102008.shp /projects/kwaechte/data/rev_qoz/nlcd_reclass.tif /projects/kwaechte/data/rev_qoz/nlcd_qoz.tif
 python gdal_reclassify.py /projects/kwaechte/data/rev_qoz/usa_esri_parks.tif /projects/kwaechte/data/rev_qoz/parks_reclass.tif -c "==255, ==1" -r "0, 1"
 python gdal_reclassify.py /projects/kwaechte/data/rev_qoz/usa_usfs_ira.tif /projects/kwaechte/data/rev_qoz/usfsira_reclass.tif -c "==255, ==1" -r "0, 1"
 python gdal_reclassify.py /projects/kwaechte/data/rev_qoz/usa_blm_acec.tif /projects/kwaechte/data/rev_qoz/blmacec_reclass.tif -c "==255, ==1" -r "0, 1"
@@ -92,3 +92,43 @@ gdaltindex /projects/kwaechte/data/rev_qoz/exclusion/footprints.shp /projects/kw
 
 # for raster chunks directory, convert all to polygons (gdal_polygonize derivative) GeoJSONs
 for filename in /projects/kwaechte/data/rev_qoz/slope/*.tif; do gdal_polygonize.py $filename -f "GeoJSON" ${filename::-4}.geojson; done
+
+## ALTERNATIVELY ##
+# iterate through paths in python (easier to get output with geopandas)
+inputfilelist = []
+inputpath = '/projects/kwaechte/data/rev_qoz/nlcd/'
+for file in os.listdir(inputpath):
+    if file.endswith('.tif'):
+        fileinputname = file
+        filebasename = file.replace('.tif', '')
+        inputfile = inputpath+fileinputname
+        outputfile = inputpath+filebasename+'.geojson'
+        inputfilelist.append(inputfile)
+print("FILELIST LENGTH:", len(inputfilelist))
+for file in inputfilelist:
+    try:
+        start = time.time()
+#         inputpath = '/projects/kwaechte/data/rev_qoz/nlcd/'
+        outfilename = file.replace('.tif', '.geojson')
+        gdal_polygonize_string = '/projects/kwaechte/anaconda3/envs/python37/lib/python3.7/site-packages/gdal_polygonize.py '+file+' -f "GeoJSON" '+outfilename
+        print(gdal_polygonize_string)
+        os.system(gdal_polygonize_string)
+        end = time.time()
+        clock = time.ctime()
+        print("Run @ ", end-start, " | ", clock,"\n", file)
+    except Exception as e:
+        print("ERROR |", e)
+ 
+# use multiprocessing to loop through
+# erase exclusions with vector data
+feds1 = gpd.overlay(soz, feds, how='difference')
+parks2 = gpd.overlay(feds1, parks, how='difference')
+landmarks3 = gpd.overlay(parks2, landmarks, how='difference')
+ghsl4 = gpd.overlay(landmarks3, ghsl, how='difference')
+blm5 = gpd.overlay(ghsl4, blm, how='difference')
+usfs6 = gpd.overlay(blm5, usfs, how='difference')
+usfs6.plot()
+
+final_destination = '/projects/kwaechte/data/rev_qoz/'
+name='exclusions'
+combined.to_file(str(final_destination)+str(name)+".geojson", driver="GeoJSON")
